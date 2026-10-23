@@ -51,6 +51,8 @@ The cards come from DMS's thumbnail cache (`~/.cache/DankMaterialShell/imagecach
 
 Downloads are named `wallhaven-<id>.<ext>`. Each one goes to a `.part` file and is renamed when complete, so the carousel never shows half an image.
 
+With a Wallhaven API key in the settings, SFW, Sketchy and NSFW buttons show up next to the categories, and the key goes along with every Wallhaven request. Without a key nothing changes: the buttons stay hidden and the search is SFW only.
+
 ### See it full size before you download
 
 `Space`, a double click on a result, or a click on the picture in the side panel opens the wallpaper full screen. A small copy shows at once, and the original fades in over it, with a progress bar while it loads. `Tab`, or a click on the picture, switches between the whole picture and filling the screen the way it would sit as your wallpaper. The arrow keys and the wheel go to the next or previous result, `Enter`, `F` and `D` download from there, and `Esc` goes back to the results.
@@ -136,6 +138,7 @@ In Settings → Plugins → Wallhaven Carousel:
 
 - **Wallpaper folder.** Left empty, the plugin uses the folder DMS cycles through, or else the folder of the current wallpaper. `~` works.
 - **Shuffle favorites every.** 5, 15 or 30 minutes, or 1, 3 or 6 hours.
+- **Wallhaven API key.** Optional, from [wallhaven.cc/settings/account](https://wallhaven.cc/settings/account). It unlocks the Sketchy and NSFW filters and is stored in plain text in `plugin_settings.json`.
 
 ## How it works with DMS
 

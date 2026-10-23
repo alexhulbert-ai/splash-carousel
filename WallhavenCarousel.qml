@@ -18,6 +18,7 @@ PluginComponent {
     property var popoutService: null
 
     readonly property string userAgent: "wallhavenCarousel/1.0"
+    readonly property string apiKey: String(pluginData?.apiKey ?? "").trim()
 
     // ── Folder ────────────────────────────────────────────────────────────
     // One folder: the plugin's own setting, else DMS's cycling folder, else
@@ -208,8 +209,11 @@ PluginComponent {
     }
 
     // `dms dl` with its errors on stdout, the only stream Proc hands back,
-    // so "HTTP 429" tells a rate limit from a dropped connection.
+    // so "HTTP 429" tells a rate limit from a dropped connection. With an API
+    // key, it goes along as X-API-Key (Sketchy/NSFW results and details).
     function fetch(url) {
+        if (apiKey)
+            return ["sh", "-c", 'exec dms dl --connect-timeout 10 --timeout 30 --user-agent "$1" -H "X-API-Key: $3" "$2" 2>&1', "sh", userAgent, url, apiKey];
         return ["sh", "-c", 'exec dms dl --connect-timeout 10 --timeout 30 --user-agent "$1" "$2" 2>&1', "sh", userAgent, url];
     }
 

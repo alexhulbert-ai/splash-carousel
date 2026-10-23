@@ -29,6 +29,13 @@ PluginSettings {
         placeholder: "~/Pictures/Wallpapers"
     }
 
+    StringSetting {
+        settingKey: "apiKey"
+        label: I18n.trFor("wallhavenCarousel", "Wallhaven API key")
+        description: I18n.trFor("wallhavenCarousel", "Optional. Unlocks the Sketchy and NSFW filters. Get one at wallhaven.cc/settings/account. Stored in plain text.")
+        placeholder: ""
+    }
+
     SelectionSetting {
         settingKey: "favoritesInterval"
         label: I18n.trFor("wallhavenCarousel", "Shuffle favorites every")

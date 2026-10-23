@@ -203,6 +203,9 @@
   "Open it with: dms ipc call wallhavenCarousel toggle. The plugin uses one folder, the same one as DMS's automatic wallpaper cycling.": {
     "Open it with: dms ipc call wallhavenCarousel toggle. The plugin uses one folder, the same one as DMS's automatic wallpaper cycling.": "Abra com: dms ipc call wallhavenCarousel toggle. O plugin usa uma pasta só, a mesma da troca automática do DMS."
   },
+  "Optional. Unlocks the Sketchy and NSFW filters. Get one at wallhaven.cc/settings/account. Stored in plain text.": {
+    "Optional. Unlocks the Sketchy and NSFW filters. Get one at wallhaven.cc/settings/account. Stored in plain text.": "Opcional. Libera os filtros Sketchy e NSFW. Gere uma em wallhaven.cc/settings/account. Fica salva em texto puro."
+  },
   "orange": {
     "orange": "laranja"
   },
@@ -236,6 +239,9 @@
   "Shuffle favorites every": {
     "Shuffle favorites every": "Trocar entre os favoritos a cada"
   },
+  "Sketchy": {
+    "Sketchy": "Sketchy"
+  },
   "Space": {
     "Space": "Espaço"
   },
@@ -266,8 +272,14 @@
   "Wallhaven answered with an error (HTTP %1).": {
     "Wallhaven answered with an error (HTTP %1).": "O Wallhaven respondeu com erro (HTTP %1)."
   },
+  "Wallhaven API key": {
+    "Wallhaven API key": "Chave de API do Wallhaven"
+  },
   "Wallhaven is rate limiting searches. Wait a minute.": {
     "Wallhaven is rate limiting searches. Wait a minute.": "O Wallhaven está limitando as buscas. Espere um minuto."
+  },
+  "Wallhaven rejected the API key. Check it in the plugin settings.": {
+    "Wallhaven rejected the API key. Check it in the plugin settings.": "O Wallhaven recusou a chave de API. Confira nas configurações do plugin."
   },
   "Wallhaven sent an answer that isn't JSON.": {
     "Wallhaven sent an answer that isn't JSON.": "O Wallhaven mandou uma resposta que não é JSON."

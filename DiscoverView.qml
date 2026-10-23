@@ -3,7 +3,7 @@ import Quickshell.Widgets
 import qs.Common
 import qs.Widgets
 
-// Adding wallpapers: a Wallhaven search (SFW only). Picking one opens the
+// Adding wallpapers: a Wallhaven search (SFW, or Sketchy/NSFW with an API key). Picking one opens the
 // controls; downloading puts the file in the folder and, if asked, uses and
 // favorites it right away.
 FocusScope {
@@ -16,6 +16,8 @@ FocusScope {
 
     property string query: ""
     property string categories: "111"
+    // SFW, Sketchy, NSFW. Only sent with an API key; without one it's SFW.
+    property string purity: String(hub.pluginData?.purity || "100")
     property string sorting: "toplist"
     property string atleast: "1920x1080"
     property int page: 1
@@ -115,7 +117,7 @@ FocusScope {
     function url(pageNumber) {
         const p = [];
         p.push("categories=" + categories);
-        p.push("purity=100");
+        p.push("purity=" + (hub.apiKey ? purity : "100"));
         p.push("sorting=" + sorting);
         if (query.trim() !== "")
             p.push("q=" + encodeURIComponent(query.trim()));
@@ -136,6 +138,8 @@ FocusScope {
         const http = /HTTP (\d+)/.exec(String(out));
         if (http && http[1] === "429")
             return I18n.trFor("wallhavenCarousel", "Wallhaven is rate limiting searches. Wait a minute.");
+        if (http && http[1] === "401")
+            return I18n.trFor("wallhavenCarousel", "Wallhaven rejected the API key. Check it in the plugin settings.");
         if (http)
             return I18n.trFor("wallhavenCarousel", "Wallhaven answered with an error (HTTP %1).").arg(http[1]);
         return I18n.trFor("wallhavenCarousel", "No connection to Wallhaven.");
@@ -367,6 +371,16 @@ FocusScope {
         search();
     }
 
+    function togglePurity(i) {
+        const c = purity.split("");
+        c[i] = c[i] === "1" ? "0" : "1";
+        if (c.join("") === "000")
+            return;
+        purity = c.join("");
+        hub.saveData("purity", purity);
+        search();
+    }
+
     // ── Header: back, search and filters ──────────────────────────────────
     Item {
         id: head
@@ -497,6 +511,36 @@ FocusScope {
                         view.sorting = modelData.v;
                         view.search();
                     }
+                }
+            }
+
+            Item {
+                visible: !!view.hub.apiKey
+                width: Theme.spacingL
+                height: 1
+            }
+
+            Repeater {
+                model: view.hub.apiKey ? [
+                    {
+                        label: "SFW",
+                        i: 0
+                    },
+                    {
+                        label: I18n.trFor("wallhavenCarousel", "Sketchy"),
+                        i: 1
+                    },
+                    {
+                        label: "NSFW",
+                        i: 2
+                    }
+                ] : []
+                delegate: PillButton {
+                    required property var modelData
+                    implicitHeight: Theme.iconSize + Theme.spacingS
+                    label: modelData.label
+                    active: view.purity[modelData.i] === "1"
+                    onClicked: view.togglePurity(modelData.i)
                 }
             }
 
