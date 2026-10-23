@@ -20,8 +20,14 @@
   "15 minutes": {
     "15 minutes": "15 minutos"
   },
+  "3 days": {
+    "3 days": "3 dias"
+  },
   "3 hours": {
     "3 hours": "3 horas"
+  },
+  "3 months": {
+    "3 months": "3 meses"
   },
   "30 minutes": {
     "30 minutes": "30 minutos"
@@ -31,6 +37,9 @@
   },
   "6 hours": {
     "6 hours": "6 horas"
+  },
+  "6 months": {
+    "6 months": "6 meses"
   },
   "Add": {
     "Add": "Adicionar"
@@ -70,6 +79,9 @@
   },
   "dark": {
     "dark": "escuro"
+  },
+  "Day": {
+    "Day": "Dia"
   },
   "Delete": {
     "Delete": "Excluir"
@@ -155,6 +167,9 @@
   "Mark a few favorites first (F key)": {
     "Mark a few favorites first (F key)": "Marque alguns favoritos antes (tecla F)"
   },
+  "Month": {
+    "Month": "Mês"
+  },
   "Most favorited": {
     "Most favorited": "Mais favoritados"
   },
@@ -233,8 +248,8 @@
   "The folder is empty. Press A to download from Wallhaven.": {
     "The folder is empty. Press A to download from Wallhaven.": "A pasta está vazia. Aperte A para baixar do Wallhaven."
   },
-  "Top this month": {
-    "Top this month": "Top do mês"
+  "Toplist": {
+    "Toplist": "Top"
   },
   "Try again": {
     "Try again": "Tentar de novo"
@@ -265,6 +280,12 @@
   },
   "Wallpapers": {
     "Wallpapers": "Wallpapers"
+  },
+  "Week": {
+    "Week": "Semana"
+  },
+  "Year": {
+    "Year": "Ano"
   },
   "yellow": {
     "yellow": "amarelo"

@@ -41,7 +41,7 @@ The cards come from DMS's thumbnail cache (`~/.cache/DankMaterialShell/imagecach
 
 ![Searching Wallhaven for mountains, picking a result and seeing its tags and download buttons](https://github.com/alicercedigital/wallhaven-carousel/releases/download/v1.0.0/wallhaven.gif)
 
-`A` opens a [Wallhaven](https://wallhaven.cc) search in the same overlay, SFW only, with no account or API key. Choose the categories (General, Anime, People), sort by top of the month, latest, most viewed, most favorited, relevance or random, and set a minimum size of 1080p, 1440p or 4K. `Load more` brings the next page. The side panel shows the resolution, file size, views, palette and tags of the selected wallpaper.
+`A` opens a [Wallhaven](https://wallhaven.cc) search in the same overlay, SFW only, with no account or API key. Choose the categories (General, Anime, People), sort by the toplist of the last day, 3 days, week, month, 3 or 6 months or year, latest, most viewed, most favorited, relevance or random, and set a minimum size of 1080p, 1440p or 4K. `Load more` brings the next page. The side panel shows the resolution, file size, views, palette and tags of the selected wallpaper.
 
 | Key | Button | What happens |
 | --- | --- | --- |

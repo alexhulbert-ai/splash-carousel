@@ -22,6 +22,8 @@ FocusScope {
     property int lastPage: 1
     property int total: -1
     property string seed: ""
+    // Toplist's period: 1d, 3d, 1w, 1M, 3M, 6M or 1y.
+    property string topRange: String(hub.pluginData?.topRange || "1M")
     property bool loading: false
     property string errorText: ""
     property int serial: 0
@@ -120,7 +122,7 @@ FocusScope {
         if (atleast !== "")
             p.push("atleast=" + atleast);
         if (sorting === "toplist")
-            p.push("topRange=1M");
+            p.push("topRange=" + topRange);
         p.push("order=desc");
         p.push("page=" + pageNumber);
         if (sorting === "random" && seed !== "" && pageNumber > 1)
@@ -372,7 +374,8 @@ FocusScope {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: Theme.spacingL * 2
-        height: 112
+        // Grows when the filters wrap to a second line.
+        height: Math.max(112, back.height + Theme.spacingL + filters.height)
 
         MouseArea {
             anchors.fill: parent
@@ -461,7 +464,7 @@ FocusScope {
             Repeater {
                 model: [
                     {
-                        label: I18n.trFor("wallhavenCarousel", "Top this month"),
+                        label: I18n.trFor("wallhavenCarousel", "Toplist"),
                         v: "toplist"
                     },
                     {
@@ -492,6 +495,56 @@ FocusScope {
                     active: view.sorting === modelData.v
                     onClicked: {
                         view.sorting = modelData.v;
+                        view.search();
+                    }
+                }
+            }
+
+            Item {
+                visible: view.sorting === "toplist"
+                width: Theme.spacingL
+                height: 1
+            }
+
+            Repeater {
+                model: view.sorting === "toplist" ? [
+                    {
+                        label: I18n.trFor("wallhavenCarousel", "Day"),
+                        v: "1d"
+                    },
+                    {
+                        label: I18n.trFor("wallhavenCarousel", "3 days"),
+                        v: "3d"
+                    },
+                    {
+                        label: I18n.trFor("wallhavenCarousel", "Week"),
+                        v: "1w"
+                    },
+                    {
+                        label: I18n.trFor("wallhavenCarousel", "Month"),
+                        v: "1M"
+                    },
+                    {
+                        label: I18n.trFor("wallhavenCarousel", "3 months"),
+                        v: "3M"
+                    },
+                    {
+                        label: I18n.trFor("wallhavenCarousel", "6 months"),
+                        v: "6M"
+                    },
+                    {
+                        label: I18n.trFor("wallhavenCarousel", "Year"),
+                        v: "1y"
+                    }
+                ] : []
+                delegate: PillButton {
+                    required property var modelData
+                    implicitHeight: Theme.iconSize + Theme.spacingS
+                    label: modelData.label
+                    active: view.topRange === modelData.v
+                    onClicked: {
+                        view.topRange = modelData.v;
+                        view.hub.saveData("topRange", modelData.v);
                         view.search();
                     }
                 }
