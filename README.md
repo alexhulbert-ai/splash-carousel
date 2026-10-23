@@ -25,7 +25,7 @@ Press your key and every wallpaper in the folder lines up in a skewed carousel. 
 
 The wallpaper you are using carries an "in use" badge, and the carousel opens centered on it. If DMS changes your wallpaper on a timer, the header counts down to the next change, and picking one by hand restarts that interval.
 
-The cards come from DMS's thumbnail cache (`~/.cache/DankMaterialShell/imagecache`): each wallpaper is decoded once, and from then on the carousel opens with every card already there.
+The cards use DMS's thumbnail cache at `~/.cache/DankMaterialShell/imagecache`. After a card is cached, reopening the carousel loads its thumbnail instead of decoding the full wallpaper again.
 
 ## Favorites and filters
 
@@ -51,13 +51,13 @@ The cards come from DMS's thumbnail cache (`~/.cache/DankMaterialShell/imagecach
 
 Downloads are named `wallhaven-<id>.<ext>`. Each one goes to a `.part` file and is renamed when complete, so the carousel never shows half an image.
 
-With a Wallhaven API key in the settings, SFW, Sketchy and NSFW buttons show up next to the categories, and the key goes along with every Wallhaven request. Without a key nothing changes: the buttons stay hidden and the search is SFW only.
+With a Wallhaven API key in the settings, SFW, Sketchy and NSFW buttons show up next to the categories. API searches and wallpaper details send the key in an `X-API-Key` header. Without a key, the search is SFW only.
 
 ### See it full size before you download
 
 `Space`, a double click on a result, or a click on the picture in the side panel opens the wallpaper full screen. A small copy shows at once, and the original fades in over it, with a progress bar while it loads. `Tab`, or a click on the picture, switches between the whole picture and filling the screen the way it would sit as your wallpaper. The arrow keys and the wheel go to the next or previous result, `Enter`, `F` and `D` download from there, and `Esc` goes back to the results.
 
-The originals you open are kept in `~/.cache/DankMaterialShell/wallhavenCarousel/preview` for 30 minutes, and the next and previous results are fetched and decoded ahead, so stepping through doesn't wait on the network. Downloading one you already previewed copies it from there.
+The originals you open are kept in `~/.cache/DankMaterialShell/wallhavenCarousel/preview` for 30 minutes after their last fetch or reuse. The next and previous results are fetched and decoded ahead, with at most three downloads running at once. Opening a preview can download three full images. Downloading a wallpaper you already previewed copies it from this cache.
 
 ## Delete to the Trash
 

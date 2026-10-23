@@ -17,7 +17,7 @@ PluginComponent {
 
     property var popoutService: null
 
-    readonly property string userAgent: "wallhavenCarousel/1.0"
+    readonly property string userAgent: "wallhavenCarousel/1.2"
     readonly property string apiKey: String(pluginData?.apiKey ?? "").trim()
 
     // ── Folder ────────────────────────────────────────────────────────────
@@ -429,6 +429,7 @@ PluginComponent {
     // Originals fetched for the full-size preview, kept 30 minutes (see
     // DiscoverView.fetchFull); a download reuses them instead of fetching again.
     readonly property string previewDir: stripFile(Paths.cache) + "/wallhavenCarousel/preview"
+    readonly property string previewScript: pluginService ? pluginService.getPluginPath(pluginId) + "/preview-cache.sh" : ""
 
     property var downloading: ({})
 

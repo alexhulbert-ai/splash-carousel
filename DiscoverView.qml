@@ -244,6 +244,7 @@ FocusScope {
     }
 
     onSelectedChanged: {
+        fullProgress = 0;
         if (selected)
             fetchDetail(selected.wid);
         else if (previewing)
@@ -254,13 +255,13 @@ FocusScope {
     onPreviewingChanged: prefetchAround()
 
     // ── Preview cache ─────────────────────────────────────────────────────
-    // The preview's originals go to hub.previewDir with `dms dl` and stay 30
-    // minutes. The one on screen and its neighbors are fetched ahead, and the
-    // neighbors decoded too, so stepping through doesn't wait.
+    // Originals stay on disk for 30 minutes after their last fetch or reuse.
+    // At most three fetches run at once, including the selected wallpaper.
     readonly property int cacheMinutes: 30
     property var cachedFull: ({}) // wid -> time it was fetched
     property var fetchingFull: ({}) // wid -> true
     property var failedFull: ({}) // wid -> true, until the next try
+    property var previewQueue: []
     property real fullProgress: 0
 
     function cachedPath(it) {
@@ -286,10 +287,16 @@ FocusScope {
     }
 
     function prefetchAround() {
-        if (!previewing || grid.currentIndex < 0)
-            return;
-        for (const d of [0, 1, -1])
-            fetchFull(grid.currentIndex + d);
+        previewQueue = previewing && grid.currentIndex >= 0 ? [0, 1, -1].map(d => grid.currentIndex + d).filter(i => i >= 0 && i < results.count) : [];
+        pumpPreviewQueue();
+    }
+
+    function pumpPreviewQueue() {
+        while (previewQueue.length && Object.keys(fetchingFull).length < 3) {
+            const i = previewQueue[0];
+            previewQueue = previewQueue.slice(1);
+            fetchFull(i);
+        }
     }
 
     function fetchFull(i) {
@@ -307,10 +314,7 @@ FocusScope {
             delete g[wid];
             failedFull = g;
         }
-        // Prunes what's older than the limit, reuses a file still there, and
-        // otherwise downloads to .part and renames.
-        const script = 'd="$(dirname "$1")"; mkdir -p "$d" || exit 1; find "$d" -type f -mmin +"$4" -delete 2>/dev/null; [ -s "$1" ] && exit 0; for i in 1 2; do dms dl --connect-timeout 10 --timeout 180 --user-agent "$3" -o "$1.part" "$2" >/dev/null 2>&1 && exec mv "$1.part" "$1"; sleep 1; done; rm -f "$1.part"; exit 1';
-        Proc.runCommand("wallhavenCarousel.preview." + wid, ["sh", "-c", script, "sh", cachedPath(it), it.full, hub.userAgent, String(cacheMinutes)], (out, code) => {
+        Proc.runCommand("wallhavenCarousel.preview." + wid, ["sh", hub.previewScript, cachedPath(it), it.full, hub.userAgent, String(cacheMinutes)], (out, code) => {
             const f = Object.assign({}, view.fetchingFull);
             delete f[wid];
             view.fetchingFull = f;
@@ -322,7 +326,15 @@ FocusScope {
                 view.failedFull = Object.assign({}, view.failedFull, {
                     [wid]: true
                 });
+            view.pumpPreviewQueue();
         }, 0, 400000, view);
+    }
+
+    Timer {
+        interval: 60000
+        repeat: true
+        running: view.previewing && view.visible
+        onTriggered: view.prefetchAround()
     }
 
     readonly property bool selectedFetching: !!selected && !!fetchingFull[selected.wid]
