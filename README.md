@@ -25,6 +25,8 @@ Press your key and every wallpaper in the folder lines up in a skewed carousel. 
 
 The wallpaper you are using carries an "in use" badge, and the carousel opens centered on it. If DMS changes your wallpaper on a timer, the header counts down to the next change, and picking one by hand restarts that interval.
 
+The cards come from DMS's thumbnail cache (`~/.cache/DankMaterialShell/imagecache`): each wallpaper is decoded once, and from then on the carousel opens with every card already there.
+
 ## Favorites and filters
 
 ![Opening the filters, clicking the blue and pink color dots, then showing favorites only](https://github.com/alicercedigital/wallhaven-carousel/releases/download/v1.0.0/filters.gif)

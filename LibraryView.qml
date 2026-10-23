@@ -659,13 +659,16 @@ FocusScope {
                             color: Theme.surfaceContainer
                         }
 
-                        Image {
+                        // DMS's thumbnail cache (~/.cache/DankMaterialShell/imagecache):
+                        // the full image is decoded once, then a small PNG loads from
+                        // then on. Its own size (768) keeps it apart from DMS's
+                        // picker, which caches a different crop at 1024.
+                        CachingImage {
                             anchors.fill: parent
-                            source: view.hub.urlFor(card.fileName)
-                            sourceSize: Qt.size(view.cardW * 2, view.cardH * 2)
+                            imagePath: view.hub.folder + "/" + card.fileName
+                            maxCacheSize: 768
                             fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
-                            cache: false
+                            animate: false
                         }
 
                         // The star and the "in use" chip sit on the picture: dark with light
