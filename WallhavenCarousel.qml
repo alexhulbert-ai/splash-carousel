@@ -422,6 +422,10 @@ PluginComponent {
     }
 
     // ── Wallhaven downloads ───────────────────────────────────────────────
+    // Originals fetched for the full-size preview, kept 30 minutes (see
+    // DiscoverView.fetchFull); a download reuses them instead of fetching again.
+    readonly property string previewDir: stripFile(Paths.cache) + "/wallhavenCarousel/preview"
+
     property var downloading: ({})
 
     signal downloaded(string name)
@@ -447,9 +451,10 @@ PluginComponent {
         });
         const dest = folder + "/" + name;
         // Downloads to .part and only then renames, so the folder never shows
-        // a half-written file. Three tries, for a flaky connection.
-        const script = 'mkdir -p "$(dirname "$1")" || exit 1; for i in 1 2 3; do dms dl --connect-timeout 10 --timeout 180 --user-agent "$3" -o "$1.part" "$2" >/dev/null 2>&1 && exec mv "$1.part" "$1"; sleep 2; done; rm -f "$1.part"; exit 1';
-        Proc.runCommand("wallhavenCarousel.download." + item.wid, ["sh", "-c", script, "sh", dest, item.full, userAgent], (out, code) => {
+        // a half-written file. Three tries, for a flaky connection. An
+        // original already fetched for the preview is copied instead.
+        const script = 'mkdir -p "$(dirname "$1")" || exit 1; if [ -s "$4" ] && cp "$4" "$1.part"; then exec mv "$1.part" "$1"; fi; for i in 1 2 3; do dms dl --connect-timeout 10 --timeout 180 --user-agent "$3" -o "$1.part" "$2" >/dev/null 2>&1 && exec mv "$1.part" "$1"; sleep 2; done; rm -f "$1.part"; exit 1';
+        Proc.runCommand("wallhavenCarousel.download." + item.wid, ["sh", "-c", script, "sh", dest, item.full, userAgent, previewDir + "/" + name], (out, code) => {
             const d = Object.assign({}, root.downloading);
             delete d[item.wid];
             root.downloading = d;

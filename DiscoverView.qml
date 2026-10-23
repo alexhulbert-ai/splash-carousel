@@ -242,6 +242,101 @@ FocusScope {
             fetchDetail(selected.wid);
         else if (previewing)
             closePreview();
+        prefetchAround();
+    }
+
+    onPreviewingChanged: prefetchAround()
+
+    // ── Preview cache ─────────────────────────────────────────────────────
+    // The preview's originals go to hub.previewDir with `dms dl` and stay 30
+    // minutes. The one on screen and its neighbors are fetched ahead, and the
+    // neighbors decoded too, so stepping through doesn't wait.
+    readonly property int cacheMinutes: 30
+    property var cachedFull: ({}) // wid -> time it was fetched
+    property var fetchingFull: ({}) // wid -> true
+    property var failedFull: ({}) // wid -> true, until the next try
+    property real fullProgress: 0
+
+    function cachedPath(it) {
+        return hub.previewDir + "/" + it.fileName;
+    }
+
+    // A few minutes short of the prune, so a file is never used as it goes.
+    function isCached(wid) {
+        const t = cachedFull[wid];
+        return !!t && Date.now() - t < (cacheMinutes - 5) * 60000;
+    }
+
+    function fullSource(it) {
+        return it && isCached(it.wid) ? "file://" + cachedPath(it) : "";
+    }
+
+    // The width the original is decoded at: the same for the picture and the
+    // neighbors, so they share one decoded copy.
+    function decodeWidth(resolution) {
+        const m = /^(\d+)x/.exec(resolution || "");
+        const w = Math.round(preview.width * 2);
+        return m ? Math.min(Number(m[1]), w) : w;
+    }
+
+    function prefetchAround() {
+        if (!previewing || grid.currentIndex < 0)
+            return;
+        for (const d of [0, 1, -1])
+            fetchFull(grid.currentIndex + d);
+    }
+
+    function fetchFull(i) {
+        if (i < 0 || i >= results.count)
+            return;
+        const it = results.get(i);
+        const wid = it.wid;
+        if (isCached(wid) || fetchingFull[wid])
+            return;
+        fetchingFull = Object.assign({}, fetchingFull, {
+            [wid]: true
+        });
+        if (failedFull[wid]) {
+            const g = Object.assign({}, failedFull);
+            delete g[wid];
+            failedFull = g;
+        }
+        // Prunes what's older than the limit, reuses a file still there, and
+        // otherwise downloads to .part and renames.
+        const script = 'd="$(dirname "$1")"; mkdir -p "$d" || exit 1; find "$d" -type f -mmin +"$4" -delete 2>/dev/null; [ -s "$1" ] && exit 0; for i in 1 2; do dms dl --connect-timeout 10 --timeout 180 --user-agent "$3" -o "$1.part" "$2" >/dev/null 2>&1 && exec mv "$1.part" "$1"; sleep 1; done; rm -f "$1.part"; exit 1';
+        Proc.runCommand("wallhavenCarousel.preview." + wid, ["sh", "-c", script, "sh", cachedPath(it), it.full, hub.userAgent, String(cacheMinutes)], (out, code) => {
+            const f = Object.assign({}, view.fetchingFull);
+            delete f[wid];
+            view.fetchingFull = f;
+            if (code === 0)
+                view.cachedFull = Object.assign({}, view.cachedFull, {
+                    [wid]: Date.now()
+                });
+            else
+                view.failedFull = Object.assign({}, view.failedFull, {
+                    [wid]: true
+                });
+        }, 0, 400000, view);
+    }
+
+    readonly property bool selectedFetching: !!selected && !!fetchingFull[selected.wid]
+
+    onSelectedFetchingChanged: fullProgress = 0
+
+    // `dms dl` has no progress of its own: the .part file's size against the
+    // size Wallhaven reported.
+    Timer {
+        interval: 250
+        repeat: true
+        running: view.previewing && view.selectedFetching
+        onTriggered: {
+            const wid = view.selected.wid;
+            const size = view.selected.size;
+            Proc.runCommand("wallhavenCarousel.previewProgress", ["sh", "-c", 'stat -c %s "$1.part" 2>/dev/null || echo 0', "sh", view.cachedPath(view.selected)], (out, code) => {
+                if (view.selected && view.selected.wid === wid && size > 0)
+                    view.fullProgress = Math.min(1, Number(String(out).trim()) / size);
+            }, 0, 5000, view);
+        }
     }
 
     function item() {
@@ -884,19 +979,35 @@ FocusScope {
                     visible: full.status !== Image.Ready
                 }
 
+                // From the preview cache, once fetched; the small copy shows
+                // until then.
                 Image {
                     id: full
                     anchors.fill: parent
-                    source: view.previewing && view.selected ? view.selected.full : ""
-                    sourceSize.width: Math.min(view.previewSize.w, Math.round(preview.width * 2))
+                    source: view.previewing ? view.fullSource(view.selected) : ""
+                    sourceSize.width: view.decodeWidth(view.selected ? view.selected.resolution : "")
                     asynchronous: true
-                    cache: false
                     opacity: status === Image.Ready ? 1 : 0
 
                     Behavior on opacity {
                         NumberAnimation {
                             duration: 180
                         }
+                    }
+                }
+
+                // The neighbors, decoded ahead out of sight: same source and
+                // size as the picture would use, so it picks up their copy.
+                Repeater {
+                    model: view.previewing ? [-1, 1] : []
+                    delegate: Image {
+                        required property int modelData
+                        readonly property int at: grid.currentIndex + modelData
+                        readonly property var it: at >= 0 && at < results.count ? results.get(at) : null
+                        visible: false
+                        source: view.fullSource(it)
+                        sourceSize.width: view.decodeWidth(it ? it.resolution : "")
+                        asynchronous: true
                     }
                 }
 
@@ -913,9 +1024,9 @@ FocusScope {
             anchors.top: parent.top
             anchors.left: parent.left
             height: Theme.spacingXS
-            width: parent.width * full.progress
+            width: parent.width * view.fullProgress
             color: Theme.primary
-            visible: full.status === Image.Loading
+            visible: view.selectedFetching
         }
 
         // In fill mode the picture runs under the controls; this keeps them
@@ -981,9 +1092,9 @@ FocusScope {
                     if (!view.selected)
                         return "";
                     const info = view.selected.resolution + "  ·  " + view.megabytes(view.selected.size) + "  ·  " + view.selected.category;
-                    if (full.status === Image.Loading)
-                        return info + "  ·  " + I18n.trFor("wallhavenCarousel", "loading the full size… %1%").arg(Math.round(full.progress * 100));
-                    if (full.status === Image.Error)
+                    if (view.selectedFetching)
+                        return info + "  ·  " + I18n.trFor("wallhavenCarousel", "loading the full size… %1%").arg(Math.round(view.fullProgress * 100));
+                    if (full.status === Image.Error || view.failedFull[view.selected.wid])
                         return info + "  ·  " + I18n.trFor("wallhavenCarousel", "couldn't load the full size");
                     return info;
                 }

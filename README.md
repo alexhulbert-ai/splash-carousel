@@ -55,6 +55,8 @@ Downloads are named `wallhaven-<id>.<ext>`. Each one goes to a `.part` file and 
 
 `Space`, a double click on a result, or a click on the picture in the side panel opens the wallpaper full screen. A small copy shows at once, and the original fades in over it, with a progress bar while it loads. `Tab`, or a click on the picture, switches between the whole picture and filling the screen the way it would sit as your wallpaper. The arrow keys and the wheel go to the next or previous result, `Enter`, `F` and `D` download from there, and `Esc` goes back to the results.
 
+The originals you open are kept in `~/.cache/DankMaterialShell/wallhavenCarousel/preview` for 30 minutes, and the next and previous results are fetched and decoded ahead, so stepping through doesn't wait on the network. Downloading one you already previewed copies it from there.
+
 ## Delete to the Trash
 
 `Del` asks first, then moves the file to the Trash with `dms trash`, where you can restore it. If it was the wallpaper in use, the next card becomes the wallpaper before the file goes.
