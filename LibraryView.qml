@@ -251,6 +251,8 @@ FocusScope {
         return entries[i + 1 < entries.length ? i + 1 : i - 1].name;
     }
 
+    readonly property string blockedReason: current ? hub.blocked(hub.localItem(current.name)) : ""
+
     function applyCurrent() {
         if (!current)
             return;
@@ -281,6 +283,8 @@ FocusScope {
         list.forceActiveFocus();
     }
 
+    readonly property var currentCredit: hub.currentPath === hub.rotation.state.currentRemote?.path ? hub.rotation.state.currentRemote : hub.metadata[hub.currentPath]
+
     // ── Top bar ───────────────────────────────────────────────────────────
     Item {
         id: topBar
@@ -307,13 +311,23 @@ FocusScope {
             StyledText {
                 text: {
                     const parts = [view.anyFilter ? I18n.trFor("wallhavenCarousel", "%1 of %2 in the folder").arg(view.entries.length).arg(view.hub.names.length) : I18n.trFor("wallhavenCarousel", "%1 in the folder").arg(view.hub.names.length), I18n.trFor("wallhavenCarousel", "%1 favorites").arg(view.hub.favoriteCount)];
-                    if (view.hub.cycleCountdown)
-                        parts.push(view.hub.cycleCountdown);
+                    parts.push(view.hub.rotation.active ? view.hub.rotation.statusText : view.hub.cycleCountdown || "Rotation off");
                     return parts.join(" · ");
                 }
                 color: Theme.surfaceText
                 opacity: 0.6
                 font.pixelSize: Theme.fontSizeSmall
+            }
+            StyledText {
+                visible: view.currentCredit?.provider === "unsplash"
+                text: view.currentCredit ? "Photo by " + view.currentCredit.photographer + " · Unsplash" : ""
+                color: Theme.surfaceVariantText
+                font.pixelSize: Theme.fontSizeSmall
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: Qt.openUrlExternally(view.currentCredit.profile)
+                }
             }
         }
 
@@ -360,12 +374,27 @@ FocusScope {
             }
             PillButton {
                 icon: "shuffle"
-                label: view.hub.favoritesRandom ? I18n.trFor("wallhavenCarousel", "Favorites shuffle: on") : I18n.trFor("wallhavenCarousel", "Favorites shuffle")
-                active: view.hub.favoritesRandom
+                label: view.hub.rotation.active ? "Rotation on" : "Rotate"
+                active: view.hub.rotation.active
                 onClicked: {
-                    view.hub.setFavoritesRandom(!view.hub.favoritesRandom);
+                    view.hub.rotation.setEnabled(!view.hub.rotation.active);
                     list.forceActiveFocus();
                 }
+            }
+            PillButton {
+                icon: "skip_next"
+                busy: view.hub.rotation.busy
+                onClicked: view.hub.rotation.next(false)
+            }
+            PillButton {
+                visible: view.hub.currentPath === view.hub.rotation.state.currentRemote?.path && !view.hub.nameSet[view.hub.currentName]
+                icon: "save"
+                label: "Save current"
+                onClicked: view.hub.saveCurrent()
+            }
+            PillButton {
+                icon: "settings"
+                onClicked: view.hub.showSettings()
             }
             PillButton {
                 icon: "add_photo_alternate"
@@ -378,6 +407,15 @@ FocusScope {
                 onClicked: view.hub.close()
             }
         }
+    }
+
+    StyledText {
+        anchors.top: topBar.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+        visible: view.blockedReason !== ""
+        text: "Excluded from rotation: " + view.blockedReason
+        color: Theme.error
+        font.pixelSize: Theme.fontSizeSmall
     }
 
     // ── Filters: color and tag ────────────────────────────────────────────
@@ -570,7 +608,7 @@ FocusScope {
                 view.favoritesOnly = !view.favoritesOnly;
                 break;
             case Qt.Key_R:
-                view.hub.setFavoritesRandom(!view.hub.favoritesRandom);
+                view.hub.rotation.setEnabled(!view.hub.rotation.active);
                 break;
             case Qt.Key_C:
                 view.filtersOpen = !view.filtersOpen;
@@ -855,7 +893,7 @@ FocusScope {
         StyledText {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
-            text: I18n.trFor("wallhavenCarousel", "← → browse    Enter use    F favorite    Del delete    / search    C filters (, . color  T tag)    Tab favorites only    R favorites shuffle    A add    Esc close")
+            text: I18n.trFor("wallhavenCarousel", "← → browse    Enter use    F favorite    Del delete    / search    C filters (, . color  T tag)    Tab favorites only    R rotation    A add    Esc close")
             color: Theme.surfaceText
             opacity: 0.4
             font.pixelSize: Theme.fontSizeSmall

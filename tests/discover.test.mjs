@@ -75,3 +75,11 @@ test('failed previews are not cached and can be retried', () => {
     assert.equal(state.isCached('2'), true);
     assert.equal(state.fullSource(state.results.get(2)), 'file:///cache/preview/wallhaven-2.jpg');
 });
+
+test('collection covers do not enter the photo preview cache', () => {
+    const { state, calls } = discovery({
+        results: { count: 1, get: () => ({ isCollection: true, fileName: '' }) },
+    });
+    state.prefetchAround();
+    assert.equal(calls.length, 0);
+});

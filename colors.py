@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Tells which colors each wallpaper in a folder has, for the color filter.
 
-Usage: colors.py FOLDER CACHE.json
-
-Reads what is missing (or changed) with ImageMagick, keeps it in CACHE and
-prints a JSON {file name: [colors]}. The colors are: red, orange, yellow,
-green, teal, blue, purple, pink, dark, light, gray. A wallpaper gets its
-dominant color, the second one when it weighs almost as much, and dark/light
-when the background is dark or bright.
-"""
 import colorsys
 import json
 import os
@@ -43,15 +34,18 @@ def analyse(path):
             capture_output=True, timeout=90, env={**os.environ, "MAGICK_THREAD_LIMIT": "1"},
         ).stdout
     except (subprocess.TimeoutExpired, OSError):
-        return []
+        return [], {}
     n = len(raw) // 3
     if n == 0:
-        return []
+        return [], {}
     weight = {}
     colored = dark = light = 0
+    histogram = {}
     for i in range(n):
         r, g, b = raw[3 * i] / 255, raw[3 * i + 1] / 255, raw[3 * i + 2] / 255
         h, s, v = colorsys.rgb_to_hsv(r, g, b)
+        key = "dark" if v < 0.2 else ("light" if v > 0.8 else "gray") if s < 0.15 else hue_name(h)
+        histogram[key] = histogram.get(key, 0) + 1
         if v < 0.2:
             dark += 1
         elif s < 0.15:
@@ -71,7 +65,7 @@ def analyse(path):
         out.append("dark")
     if light / n > 0.4:
         out.append("light")
-    return out or ["gray"]
+    return out or ["gray"], {key: value / n for key, value in histogram.items()}
 
 
 def main():
@@ -92,12 +86,12 @@ def main():
             except OSError:
                 pass
 
-    todo = [n for n, m in files.items() if cache.get(n, {}).get("m") != m]
+    todo = [n for n, m in files.items() if cache.get(n, {}).get("m") != m or "p" not in cache.get(n, {}) or cache.get(n, {}).get("f") != os.path.realpath(folder)]
     if todo:
-        workers = max(2, (os.cpu_count() or 4) // 2)
+        workers = min(8, max(2, (os.cpu_count() or 4) // 2))
         with ThreadPoolExecutor(workers) as pool:
-            for name, colors in zip(todo, pool.map(lambda n: analyse(os.path.join(folder, n)), todo)):
-                cache[name] = {"m": files[name], "c": colors}
+            for name, (colors, palette) in zip(todo, pool.map(lambda n: analyse(os.path.join(folder, n)), todo)):
+                cache[name] = {"m": files[name], "c": colors, "p": palette, "f": os.path.realpath(folder)}
 
     cache = {n: v for n, v in cache.items() if n in files}
     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
@@ -105,7 +99,8 @@ def main():
     with open(tmp, "w") as f:
         json.dump(cache, f)
     os.replace(tmp, cache_path)
-    print(json.dumps({n: v["c"] for n, v in cache.items()}))
+    print(json.dumps({"colors": {n: v["c"] for n, v in cache.items()}, "palettes": {n: v["p"] for n, v in cache.items()}}))
 
 
-main()
+if __name__ == "__main__":
+    main()

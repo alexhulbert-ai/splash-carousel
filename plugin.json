@@ -1,7 +1,7 @@
 {
     "id": "wallhavenCarousel",
-    "name": "Wallhaven Carousel",
-    "description": "Fullscreen skewed carousel of your wallpaper folder, plus favorites, a shuffle among favorites only, color and tag filters, delete to Trash, and Wallhaven search, full-size preview and download in the same overlay",
+    "name": "Wallpaper Carousel",
+    "description": "Wallhaven and Unsplash discovery, collection sources, fair color-aware rotation, favorites, and keyword filtering",
     "version": "1.2.0",
     "author": "dretz",
     "icon": "wallpaper",

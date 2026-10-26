@@ -3,9 +3,6 @@ import Quickshell.Widgets
 import qs.Common
 import qs.Widgets
 
-// Adding wallpapers: a Wallhaven search (SFW, or Sketchy/NSFW with an API key). Picking one opens the
-// controls; downloading puts the file in the folder and, if asked, uses and
-// favorites it right away.
 FocusScope {
     id: view
 
@@ -14,7 +11,72 @@ FocusScope {
     readonly property string api: "https://wallhaven.cc/api/v1"
     readonly property int detailW: 440
 
+    property string provider: "unsplash"
+    property string kind: "photos"
+    readonly property string blacklist: hub.pluginData?.blacklist || ""
+    onBlacklistChanged: {
+        loaded = false;
+        if (visible && hub.overlayVisible)
+            search();
+    }
+    property string collectionId: ""
     property string query: ""
+
+    function chooseProvider(value, searchKind) {
+        provider = value;
+        kind = searchKind;
+        collectionId = "";
+        search();
+    }
+
+    function appendItem(item) {
+        if (hub.blocked(item))
+            return;
+        const record = Object.assign({provider: "wallhaven", isCollection: false, description: "", photographer: "", profile: "", link: "", title: "", collectionId: "", photoId: ""}, item);
+        record.payload = JSON.stringify(record);
+        delete record.tags;
+        results.append(record);
+    }
+
+    function unsplashSearch(append) {
+        if (loading && append)
+            return;
+        const mine = ++serial;
+        const nextPage = append ? page + 1 : 1;
+        loading = true;
+        loaded = true;
+        errorText = "";
+        if (!append) {
+            page = 1;
+            lastPage = 1;
+            results.clear();
+            grid.currentIndex = -1;
+        }
+        hub.backend.call("search", {kind: kind, query: query, page: nextPage, collectionId: collectionId}, result => {
+            if (mine !== serial)
+                return;
+            loading = false;
+            if (!result.ok) {
+                errorText = result.error;
+                return;
+            }
+            page = nextPage;
+            lastPage = result.lastPage;
+            total = result.total;
+            for (const item of result.items)
+                appendItem(item);
+            if (grid.currentIndex < 0 && results.count)
+                grid.currentIndex = 0;
+        });
+    }
+
+    function browseCollection() {
+        if (!selected?.isCollection)
+            return;
+        collectionId = selected.collectionId;
+        kind = "photos";
+        search();
+    }
     property string categories: "111"
     // SFW, Sketchy, NSFW. Only sent with an API key; without one it's SFW.
     property string purity: String(hub.pluginData?.purity || "100")
@@ -87,6 +149,13 @@ FocusScope {
     function act(key) {
         if (!selected)
             return false;
+        if (selected.isCollection) {
+            if (key === Qt.Key_F)
+                hub.subscribe(item());
+            else if (key === Qt.Key_Return || key === Qt.Key_Enter)
+                browseCollection();
+            return true;
+        }
         if (key === Qt.Key_Return || key === Qt.Key_Enter) {
             if (selectedInLibrary)
                 hub.apply(selected.fileName);
@@ -146,6 +215,10 @@ FocusScope {
     }
 
     function search() {
+        if (provider === "unsplash") {
+            unsplashSearch(false);
+            return;
+        }
         const mine = ++serial;
         page = 1;
         lastPage = 1;
@@ -169,6 +242,10 @@ FocusScope {
     }
 
     function loadMore() {
+        if (provider === "unsplash") {
+            unsplashSearch(true);
+            return;
+        }
         if (loading || page >= lastPage || results.count === 0)
             return;
         const mine = ++serial;
@@ -208,7 +285,7 @@ FocusScope {
         }
         for (const it of js.data) {
             const ext = String(it.path).split(".").pop();
-            results.append({
+            appendItem({
                 wid: String(it.id),
                 thumb: String((it.thumbs && (it.thumbs.large || it.thumbs.small)) || it.path),
                 // "large" is always cropped to 16:9; "original" keeps the shape.
@@ -226,6 +303,28 @@ FocusScope {
     }
 
     function fetchDetail(wid) {
+        if (selected?.isCollection) {
+            detailFor = wid;
+            detail = ({});
+            return;
+        }
+        if (provider === "unsplash") {
+            if (detailFor === wid)
+                return;
+            detailFor = wid;
+            detail = ({});
+            hub.backend.call("detail", {photoId: selected.photoId}, result => {
+                if (!result.ok || detailFor !== wid || selected?.wid !== wid)
+                    return;
+                if (hub.blocked(result.item)) {
+                    results.remove(grid.currentIndex);
+                    return;
+                }
+                detail = {tags: result.item.tags};
+                results.setProperty(grid.currentIndex, "payload", JSON.stringify(result.item));
+            });
+            return;
+        }
         if (detailFor === wid)
             return;
         detailFor = wid;
@@ -235,6 +334,15 @@ FocusScope {
                 return;
             try {
                 const d = JSON.parse(out).data;
+                if (view.selected?.wid !== wid)
+                    return;
+                const record = view.item();
+                record.tags = (d.tags || []).map(t => t.name);
+                if (view.hub.blocked(record)) {
+                    results.remove(grid.currentIndex);
+                    return;
+                }
+                results.setProperty(grid.currentIndex, "payload", JSON.stringify(record));
                 view.detail = {
                     tags: (d.tags || []).map(t => t.name),
                     uploader: d.uploader ? d.uploader.username : ""
@@ -303,6 +411,8 @@ FocusScope {
         if (i < 0 || i >= results.count)
             return;
         const it = results.get(i);
+        if (it.isCollection)
+            return;
         const wid = it.wid;
         if (isCached(wid) || fetchingFull[wid])
             return;
@@ -358,11 +468,7 @@ FocusScope {
     }
 
     function item() {
-        return {
-            wid: selected.wid,
-            full: selected.full,
-            fileName: selected.fileName
-        };
+        return selected ? JSON.parse(selected.payload) : null;
     }
 
     function downloadSelected(thenApply, thenFavorite) {
@@ -400,8 +506,7 @@ FocusScope {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: Theme.spacingL * 2
-        // Grows when the filters wrap to a second line.
-        height: Math.max(112, back.height + Theme.spacingL + filters.height)
+        height: Math.max(164, providers.y + providers.height + Theme.spacingM + (filters.visible ? filters.height : 0))
 
         MouseArea {
             anchors.fill: parent
@@ -419,7 +524,7 @@ FocusScope {
             anchors.left: back.right
             anchors.leftMargin: Theme.spacingL
             anchors.verticalCenter: back.verticalCenter
-            text: "Wallhaven"
+            text: view.provider === "wallhaven" ? "Wallhaven" : view.collectionId ? "Collection" : "Unsplash"
             color: Theme.surfaceText
             font.pixelSize: Theme.fontSizeXLarge
             font.weight: Font.Bold
@@ -430,7 +535,7 @@ FocusScope {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.verticalCenter: back.verticalCenter
             width: 420
-            placeholder: I18n.trFor("wallhavenCarousel", "Search Wallhaven (Enter)")
+            placeholder: view.provider === "wallhaven" ? "Search Wallhaven" : view.kind === "collections" ? "Find a collection, or paste its URL" : "Search Unsplash photos"
             text: view.query
             onAccepted: {
                 view.query = text;
@@ -451,8 +556,37 @@ FocusScope {
             }
         }
 
+        Row {
+            id: providers
+            anchors.left: parent.left
+            anchors.top: back.bottom
+            anchors.topMargin: Theme.spacingM
+            spacing: Theme.spacingS
+            PillButton {
+                label: "Unsplash photos"
+                active: view.provider === "unsplash" && view.kind === "photos"
+                onClicked: view.chooseProvider("unsplash", "photos")
+            }
+            PillButton {
+                label: "Collections"
+                active: view.provider === "unsplash" && view.kind === "collections"
+                onClicked: view.chooseProvider("unsplash", "collections")
+            }
+            PillButton {
+                label: "Wallhaven"
+                active: view.provider === "wallhaven"
+                onClicked: view.chooseProvider("wallhaven", "photos")
+            }
+            PillButton {
+                label: "Import images"
+                icon: "folder_open"
+                onClicked: view.hub.importFiles()
+            }
+        }
+
         Flow {
             id: filters
+            visible: view.provider === "wallhaven"
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -684,7 +818,7 @@ FocusScope {
                     icon: view.errorText !== "" ? "refresh" : "expand_more"
                     label: view.loading ? I18n.trFor("wallhavenCarousel", "Loading…") : view.errorText !== "" ? I18n.trFor("wallhavenCarousel", "Try again") : I18n.trFor("wallhavenCarousel", "Load more")
                     busy: view.loading
-                    onClicked: view.loadMore()
+                    onClicked: view.errorText !== "" && results.count === 0 ? view.search() : view.loadMore()
                 }
             }
         }
@@ -900,7 +1034,7 @@ FocusScope {
 
             StyledText {
                 width: parent.width
-                text: view.selected ? view.selected.resolution + "  ·  " + view.megabytes(view.selected.size) + "  ·  " + view.selected.category : ""
+                text: view.selected ? view.selected.resolution + (view.provider === "wallhaven" ? "  ·  " + view.megabytes(view.selected.size) + "  ·  " + view.selected.category : "") : ""
                 color: Theme.surfaceText
                 font.pixelSize: Theme.fontSizeLarge
                 font.weight: Font.Medium
@@ -908,7 +1042,13 @@ FocusScope {
 
             StyledText {
                 width: parent.width
-                text: view.selected ? I18n.trFor("wallhavenCarousel", "%1 views  ·  %2 favorites on Wallhaven").arg(view.selected.views).arg(view.selected.favs) : ""
+                text: !view.selected ? "" : view.provider === "unsplash" ? (view.selected.title ? view.selected.title + " · Cover by " + view.selected.photographer : "Photo by " + view.selected.photographer) + " · Unsplash" : I18n.trFor("wallhavenCarousel", "%1 views  ·  %2 favorites on Wallhaven").arg(view.selected.views).arg(view.selected.favs)
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: view.provider === "unsplash" && !!view.selected
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: Qt.openUrlExternally(view.selected.profile || view.selected.link)
+                }
                 color: Theme.surfaceText
                 opacity: 0.6
                 font.pixelSize: Theme.fontSizeSmall
@@ -965,16 +1105,34 @@ FocusScope {
                 onClicked: view.openPreview()
             }
 
-            // Not in the folder yet: download.
             Column {
-                visible: !view.selectedInLibrary
+                visible: !!view.selected?.isCollection
+                width: parent.width
+                spacing: Theme.spacingM
+                PillButton {
+                    width: parent.width
+                    label: "Browse collection"
+                    icon: "photo_library"
+                    onClicked: view.browseCollection()
+                }
+                PillButton {
+                    width: parent.width
+                    label: active ? "Subscribed" : "Subscribe"
+                    icon: "check"
+                    active: !!view.selected && (view.hub.pluginData?.collections || []).some(item => item.collectionId === view.selected.collectionId)
+                    onClicked: view.hub.subscribe(view.item())
+                }
+            }
+
+            Column {
+                visible: !view.selectedInLibrary && !view.selected?.isCollection
                 width: parent.width
                 spacing: Theme.spacingM
 
                 PillButton {
                     width: parent.width
                     icon: "download"
-                    label: view.selectedBusy ? I18n.trFor("wallhavenCarousel", "Downloading…") : I18n.trFor("wallhavenCarousel", "Download and use")
+                    label: view.selectedBusy ? "Saving…" : "Save and use"
                     hint: "Enter"
                     active: true
                     busy: view.selectedBusy
@@ -983,7 +1141,7 @@ FocusScope {
                 PillButton {
                     width: parent.width
                     icon: "star"
-                    label: I18n.trFor("wallhavenCarousel", "Download, use and favorite")
+                    label: "Save, use and favorite"
                     hint: "F"
                     busy: view.selectedBusy
                     onClicked: view.downloadSelected(true, true)
@@ -991,14 +1149,14 @@ FocusScope {
                 PillButton {
                     width: parent.width
                     icon: "download"
-                    label: I18n.trFor("wallhavenCarousel", "Download only")
+                    label: "Save"
                     hint: "D"
                     busy: view.selectedBusy
                     onClicked: view.downloadSelected(false, false)
                 }
             }
 
-            // Already in the folder: use or favorite.
+
             Column {
                 visible: view.selectedInLibrary
                 width: parent.width
@@ -1219,7 +1377,7 @@ FocusScope {
                 PillButton {
                     visible: !view.selectedInLibrary
                     icon: "download"
-                    label: view.selectedBusy ? I18n.trFor("wallhavenCarousel", "Downloading…") : I18n.trFor("wallhavenCarousel", "Download and use")
+                    label: view.selectedBusy ? "Saving…" : "Save and use"
                     hint: "Enter"
                     active: true
                     busy: view.selectedBusy
@@ -1228,7 +1386,7 @@ FocusScope {
                 PillButton {
                     visible: !view.selectedInLibrary
                     icon: "star"
-                    label: I18n.trFor("wallhavenCarousel", "Download, use and favorite")
+                    label: "Save, use and favorite"
                     hint: "F"
                     busy: view.selectedBusy
                     onClicked: view.downloadSelected(true, true)
@@ -1236,7 +1394,7 @@ FocusScope {
                 PillButton {
                     visible: !view.selectedInLibrary
                     icon: "download"
-                    label: I18n.trFor("wallhavenCarousel", "Download only")
+                    label: "Save"
                     hint: "D"
                     busy: view.selectedBusy
                     onClicked: view.downloadSelected(false, false)

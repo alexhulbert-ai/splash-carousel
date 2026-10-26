@@ -75,6 +75,16 @@ class PreviewCacheTest(unittest.TestCase):
                 self.assertFalse(self.dest.exists())
                 self.assertFalse(Path(f"{self.dest}.part").exists())
 
+    def test_unsplash_previews_are_cached_and_both_providers_are_pruned(self):
+        self.dest = self.cache / "unsplash-current.jpg"
+        stale = [self.old_file(self.cache / name) for name in ["wallhaven-stale.jpg", "unsplash-stale.jpg"]]
+        self.assertEqual(self.run_cache().returncode, 0)
+        self.assertEqual(self.dest.read_text(), "original")
+        self.assertEqual(self.run_cache().returncode, 0)
+        self.assertEqual(self.calls.read_text().splitlines(), ["called"])
+        for path in stale:
+            self.assertFalse(path.exists())
+
     def test_arguments_are_not_executed_as_shell_code(self):
         self.dest = self.cache / "wallhaven-$(touch injected);quote'file.jpg"
         self.assertEqual(self.run_cache().returncode, 0)

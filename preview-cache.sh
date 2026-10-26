@@ -10,7 +10,7 @@ esac
 [ "$4" -gt 0 ] || exit 2
 name=${1##*/}
 case "$name" in
-    wallhaven-*) ;;
+    wallhaven-*|unsplash-*) ;;
     *) exit 2 ;;
 esac
 case "$name" in
@@ -20,7 +20,7 @@ esac
 dir=$(dirname -- "$1")
 mkdir -p -- "$dir" || exit 1
 # Leave unrelated files, subdirectories and downloads in progress alone.
-find "$dir" -maxdepth 1 -type f -name 'wallhaven-*' ! -name '*.part' \
+find "$dir" -maxdepth 1 -type f \( -name 'wallhaven-*' -o -name 'unsplash-*' \) ! -name '*.part' \
     ! -name "$name" -mmin +"$4" -delete 2>/dev/null
 
 # QML starts a new validity interval on reuse, so renew the disk timestamp too.

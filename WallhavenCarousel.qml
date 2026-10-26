@@ -7,18 +7,106 @@ import qs.Common
 import qs.Services
 import qs.Widgets
 import qs.Modules.Plugins
+import qs.DCommon.FileBrowser
+import "Rotation.js" as Rotation
 
-// Wallhaven Carousel: a carousel of the wallpaper folder, with favorites,
-// Trash, color and tag filters, Wallhaven downloads and a shuffle among
-// favorites only. DMS still owns the wallpaper (SessionData); this only
-// picks which one.
 PluginComponent {
     id: root
 
     property var popoutService: null
+    property alias backend: helper
+    property alias rotation: rotator
+    property var metadata: ({})
+    property var palettes: ({})
+    property bool applyingWallpaper: false
+    readonly property string currentItemId: currentPath === rotator.state.currentRemote?.path ? rotator.state.currentRemote.id : localItem(currentName).id
 
-    readonly property string userAgent: "wallhavenCarousel/1.2"
     readonly property string apiKey: String(pluginData?.apiKey ?? "").trim()
+
+    Backend {
+        id: helper
+        script: (root.pluginService?.getPluginPath(root.pluginId) || "") + "/wallpaper.py"
+    }
+
+    RotationController {
+        id: rotator
+        hub: root
+    }
+
+    function blocked(item) {
+        return Rotation.blocked(item, pluginData?.blacklist || "");
+    }
+
+    function localItem(name) {
+        const path = folder + "/" + name;
+        const meta = metadata[path] || {};
+        const palette = palettes[name] || meta.palette || {};
+        return Object.assign({}, meta, {id: meta.id || "file:" + path, fileName: name, path: path, tags: (meta.tags || []).concat(tags[name] || []), palette: palette});
+    }
+
+    function saveMetadata(path, item) {
+        metadata = Object.assign({}, metadata, {[path]: item});
+        pluginService.savePluginState(pluginId, "metadata", metadata);
+    }
+
+    function subscribe(item) {
+        const sources = Array.from(pluginData?.collections || []);
+        const exists = sources.some(source => source.collectionId === item.collectionId);
+        saveData("collections", exists ? sources.filter(source => source.collectionId !== item.collectionId) : sources.concat([{collectionId: item.collectionId, title: item.title, enabled: true}]));
+    }
+
+    function saveRemote(item, temporary, callback) {
+        helper.call("download", {item: item, temporary: temporary, folder: folder}, result => {
+            if (result.ok && Object.keys(result.palette || {}).length)
+                item.palette = result.palette;
+            if (result.ok && !temporary) {
+                saveMetadata(result.path, item);
+                setTags(result.fileName, item.tags || []);
+                scanTimer.restart();
+                downloaded(result.fileName);
+            }
+            if (result.ok)
+                helper.call("prune", {protect: [currentPath, result.path]}, null);
+            callback(result);
+        });
+    }
+
+    function saveCurrent() {
+        const item = rotator.state.currentRemote;
+        if (!item || currentPath !== item.path)
+            return;
+        saveRemote(item, false, result => {
+            if (result.ok)
+                ToastService.showInfo("Wallpaper saved", result.fileName);
+            else
+                ToastService.showError("Couldn't save wallpaper", result.error);
+        });
+    }
+
+    function importFiles() {
+        close();
+        importer.open();
+    }
+
+    FileBrowserModal {
+        id: importer
+        browserTitle: "Add wallpapers"
+        browserIcon: "add_photo_alternate"
+        fileExtensions: ["*.jpg", "*.jpeg", "*.png", "*.webp", "*.gif", "*.bmp", "*.jxl", "*.avif", "*.heif"]
+        multiple: true
+        onAccepted: paths => {
+            helper.call("import", {paths: paths, folder: root.folder}, result => {
+                if (!result.ok)
+                    ToastService.showError("Couldn't import wallpapers", result.error);
+                scanTimer.restart();
+                if (result.ok)
+                    root.open("library");
+            });
+            close();
+        }
+    }
+
+    readonly property string userAgent: "WallpaperCarousel/1.2"
 
     // ── Folder ────────────────────────────────────────────────────────────
     // One folder: the plugin's own setting, else DMS's cycling folder, else
@@ -49,6 +137,14 @@ PluginComponent {
         return p.startsWith("#") ? "" : p;
     }
     readonly property string currentName: currentPath.substring(currentPath.lastIndexOf("/") + 1)
+
+    onFolderChanged: Qt.callLater(() => {
+        names = [];
+        nameSet = ({});
+        colors = ({});
+        palettes = ({});
+        scanTimer.restart();
+    })
 
     function urlFor(name) {
         return "file://" + folder + "/" + encodeURIComponent(name);
@@ -164,7 +260,9 @@ PluginComponent {
             root.analyzing = false;
             if (code === 0) {
                 try {
-                    root.colors = JSON.parse(out);
+                    const analysis = JSON.parse(out);
+                    root.colors = analysis.colors;
+                    root.palettes = analysis.palettes;
                 } catch (e) {
                     console.warn("wallhavenCarousel: colors.py returned something that is not JSON");
                 }
@@ -243,7 +341,7 @@ PluginComponent {
             root.tagBusy = false;
             if (code === 0) {
                 try {
-                    root.setTags(it.name, JSON.parse(out).data.tags.map(t => t.name).slice(0, 12));
+                    root.setTags(it.name, JSON.parse(out).data.tags.map(t => t.name));
                 } catch (e) {}
             }
             tagNext.restart();
@@ -252,7 +350,13 @@ PluginComponent {
 
     // ── Apply, delete ─────────────────────────────────────────────────────
     function apply(name, screenName) {
-        const path = folder + "/" + name;
+        applyPath(folder + "/" + name, localItem(name), screenName);
+    }
+
+    function applyPath(path, item, screenName) {
+        if (!pluginData?.folder)
+            saveData("folder", folder);
+        applyingWallpaper = true;
         if (SessionData.perMonitorWallpaper) {
             if (screenName) {
                 SessionData.setMonitorWallpaper(screenName, path);
@@ -263,6 +367,8 @@ PluginComponent {
         } else {
             SessionData.setWallpaper(path);
         }
+        applyingWallpaper = false;
+        rotator.record(item);
         restartDmsCycle();
     }
 
@@ -279,6 +385,10 @@ PluginComponent {
                 return;
             }
             setFavorite(name, false);
+            const remaining = Object.assign({}, metadata);
+            delete remaining[folder + "/" + name];
+            metadata = remaining;
+            pluginService.savePluginState(pluginId, "metadata", metadata);
             if (tags[name] !== undefined)
                 setTags(name, null);
             scanTimer.restart();
@@ -343,6 +453,12 @@ PluginComponent {
         function onWallpaperCyclingIntervalChanged() {
             root.refreshDmsCycle();
         }
+        function onWallpaperPathChanged() {
+            if (root.applyingWallpaper || !rotator.ready || !root.currentPath)
+                return;
+            const item = root.currentPath === rotator.state.currentRemote?.path ? rotator.state.currentRemote : root.nameSet[root.currentName] ? root.localItem(root.currentName) : {id: "file:" + root.currentPath, path: root.currentPath, palette: {}};
+            rotator.record(item);
+        }
     }
 
     Timer {
@@ -357,72 +473,20 @@ PluginComponent {
             refreshDmsCycle();
     }
 
-    // ── Shuffle among favorites only ──────────────────────────────────────
-    // DMS's timer cycles through every file in the folder. While this one is
-    // on, DMS's is off (and comes back as it was when this is turned off).
-    readonly property bool favoritesRandom: !!pluginData?.favoritesRandom
-    readonly property int favoritesIntervalMin: parseInt(pluginData?.favoritesInterval) || 60
-    property bool _changingCycling: false
+    readonly property bool favoritesRandom: rotator.active && rotator.pool === "favorites"
 
     function saveData(key, value) {
         pluginService?.savePluginData(pluginId, key, value);
     }
 
-    function setDmsCycling(on) {
-        _changingCycling = true;
-        SessionData.setWallpaperCyclingEnabled(on);
-        _changingCycling = false;
-    }
-
     function pickRandomFavorite() {
-        const pool = favorites.filter(n => nameSet[n] && n !== currentName);
-        if (pool.length === 0)
-            return false;
-        apply(pool[Math.floor(Math.random() * pool.length)]);
-        return true;
+        return rotator.next(false, "favorites");
     }
 
     function setFavoritesRandom(on) {
-        if (on === favoritesRandom)
-            return;
-        if (on) {
-            if (favoriteCount === 0) {
-                ToastService?.showInfo(I18n.trFor("wallhavenCarousel", "Mark a few favorites first (F key)"));
-                return;
-            }
-            if (SessionData.wallpaperCyclingEnabled) {
-                saveData("restoreCycling", true);
-                setDmsCycling(false);
-            }
-            saveData("favoritesRandom", true);
-            pickRandomFavorite();
-            ToastService?.showInfo(I18n.trFor("wallhavenCarousel", "Favorites shuffle on"));
-        } else {
-            saveData("favoritesRandom", false);
-            if (pluginData?.restoreCycling) {
-                saveData("restoreCycling", false);
-                setDmsCycling(true);
-            }
-            ToastService?.showInfo(I18n.trFor("wallhavenCarousel", "Favorites shuffle off"));
-        }
-    }
-
-    // If DMS's cycling is turned on from elsewhere, it wins: this turns off.
-    Connections {
-        target: SessionData
-        function onWallpaperCyclingEnabledChanged() {
-            if (root._changingCycling || !root.favoritesRandom || !SessionData.wallpaperCyclingEnabled)
-                return;
-            root.saveData("restoreCycling", false);
-            root.saveData("favoritesRandom", false);
-        }
-    }
-
-    Timer {
-        interval: root.favoritesIntervalMin * 60000
-        running: root.favoritesRandom && !SessionService.locked
-        repeat: true
-        onTriggered: root.pickRandomFavorite()
+        if (on)
+            saveData("rotationPool", "favorites");
+        rotator.setEnabled(on);
     }
 
     // ── Wallhaven downloads ───────────────────────────────────────────────
@@ -435,10 +499,59 @@ PluginComponent {
 
     signal downloaded(string name)
 
-    // item: { wid, full, fileName }
     function download(item, thenApply, thenFavorite) {
         const name = item.fileName;
+        if (item.provider === "unsplash") {
+            if (downloading[item.wid])
+                return;
+            downloading = Object.assign({}, downloading, {[item.wid]: true});
+            helper.call("detail", {photoId: item.photoId}, detail => {
+                const done = () => {
+                    const pending = Object.assign({}, downloading);
+                    delete pending[item.wid];
+                    downloading = pending;
+                };
+                if (!detail.ok || blocked(detail.item)) {
+                    done();
+                    ToastService.showInfo("Wallpaper Carousel", detail.error || "This photo matches your blacklist.");
+                    return;
+                }
+                saveRemote(detail.item, false, result => {
+                    done();
+                    if (!result.ok) {
+                        ToastService.showError("Download failed", result.error);
+                        return;
+                    }
+                    if (thenFavorite)
+                        setFavorite(result.fileName, true);
+                    if (thenApply)
+                        applyPath(result.path, Object.assign({}, detail.item, {palette: detail.item.palette || Rotation.palette(detail.item.colors)}));
+                });
+            });
+            return;
+        }
+        if (!item.verified) {
+            Proc.runCommand("wallhavenCarousel.verify." + item.wid, fetch("https://wallhaven.cc/api/v1/w/" + item.wid), (out, code) => {
+                if (code !== 0) {
+                    ToastService.showError("Couldn't check wallpaper", "Try again when Wallhaven is available.");
+                    return;
+                }
+                try {
+                    const tags = JSON.parse(out).data.tags.map(tag => tag.name);
+                    download(Object.assign({}, item, {tags: tags, verified: true}), thenApply, thenFavorite);
+                } catch (_) {
+                    ToastService.showError("Couldn't check wallpaper", "Wallhaven returned invalid details.");
+                }
+            }, 0, 40000, root);
+            return;
+        }
+        if (blocked(item)) {
+            ToastService.showInfo("Wallpaper Carousel", "This wallpaper matches your blacklist.");
+            return;
+        }
         const finish = () => {
+            if (item.tags)
+                setTags(name, item.tags);
             if (thenFavorite)
                 setFavorite(name, true);
             if (thenApply)
@@ -508,7 +621,13 @@ PluginComponent {
         Qt.callLater(focusMode);
     }
 
+    function showSettings() {
+        mode = "settings";
+    }
+
     function focusMode() {
+        if (mode === "settings")
+            return;
         if (mode === "discover")
             discover.focusGrid();
         else
@@ -544,11 +663,21 @@ PluginComponent {
             root.toggleFavorite(root.currentName);
             return root.favoriteSet[root.currentName] ? "favorited" : "unfavorited";
         }
-        // Switches now to a random favorite.
+        function settings(): string {
+            if (!overlay.visible)
+                root.open("library");
+            root.showSettings();
+            return "opened";
+        }
+        function next(): string {
+            return rotator.next(false) ? "choosing" : "paused-or-busy";
+        }
+        function status(): string {
+            return JSON.stringify({visible: root.overlayVisible, view: root.mode, enabled: rotator.active, pool: rotator.pool, cadence: rotator.cadence, nextAt: rotator.state.nextAt || 0, paused: rotator.paused, busy: rotator.busy, saved: root.names.length, collections: rotator.collections.length, error: rotator.error});
+        }
         function random(): string {
             return root.pickRandomFavorite() ? "changed" : "no-favorites";
         }
-        // on, off or toggle.
         function favoritesRandom(mode: string): string {
             const on = mode === "toggle" ? !root.favoritesRandom : mode === "on";
             root.setFavoritesRandom(on);
@@ -599,6 +728,34 @@ PluginComponent {
             screenName: overlay.screen ? overlay.screen.name : ""
         }
 
+        FocusScope {
+            anchors.fill: parent
+            visible: root.mode === "settings"
+            PillButton {
+                id: settingsBack
+                x: Theme.spacingL * 2
+                y: Theme.spacingL * 2
+                icon: "arrow_back"
+                label: "Library"
+                onClicked: root.showLibrary()
+            }
+            Flickable {
+                anchors.top: settingsBack.bottom
+                anchors.bottom: parent.bottom
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.margins: Theme.spacingL * 2
+                width: Math.min(700, parent.width - Theme.spacingL * 4)
+                contentHeight: settingsLoader.height + Theme.spacingXL
+                clip: true
+                Loader {
+                    id: settingsLoader
+                    width: parent.width
+                    active: root.mode === "settings"
+                    sourceComponent: Settings { pluginService: root.pluginService }
+                }
+            }
+        }
+
         DiscoverView {
             id: discover
             anchors.fill: parent
@@ -610,6 +767,15 @@ PluginComponent {
     Component.onCompleted: {
         loadFavorites();
         loadTags();
+        if (pluginData?.rotationEnabled === undefined && pluginData?.favoritesRandom) {
+            saveData("rotationPool", "favorites");
+            saveData("cadence", "interval");
+            saveData("intervalAmount", String(pluginData?.favoritesInterval || 60));
+            saveData("intervalUnit", "minutes");
+            saveData("rotationEnabled", true);
+        }
+        metadata = pluginService.loadPluginState(pluginId, "metadata", {});
+        Qt.callLater(() => rotator.initialize());
         scanTimer.restart();
         console.info("wallhavenCarousel: ready (dms ipc call wallhavenCarousel toggle)");
     }
